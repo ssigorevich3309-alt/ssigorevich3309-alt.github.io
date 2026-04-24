@@ -1,4 +1,3 @@
-let sdkReady = false;
 let sdk = null;
 let selectedTokenId = null;
 let waypoints = [];
@@ -6,7 +5,7 @@ let patrolTimeout = null;
 let currentWaypointIndex = 0;
 let direction = 1;
 let mode = 'loop';
-let speed = 10; // дюймов в секунду
+let speed = 10;
 
 // DOM элементы
 const addWaypointBtn = document.getElementById('addWaypointBtn');
@@ -19,26 +18,21 @@ const statusDiv = document.getElementById('status');
 const speedSlider = document.getElementById('speedSlider');
 const speedValue = document.getElementById('speedValue');
 
-async function initSDK() {
-    if (typeof OBR === 'undefined') {
-        statusDiv.innerText = 'Ошибка: расширение запущено вне Owlbear Rodeo';
-        return;
-    }
+// Основная функция запуска расширения
+function startExtension() {
+    console.log('startExtension вызвана, OBR доступен');
     sdk = OBR;
-    sdkReady = true;
-    
-    // Настройка слушателей UI
+
     addWaypointBtn.onclick = startAddingWaypoint;
     clearWaypointsBtn.onclick = clearWaypoints;
     startPatrolBtn.onclick = startPatrol;
     stopPatrolBtn.onclick = stopPatrol;
     patrolModeSelect.onchange = (e) => { mode = e.target.value; };
-    speedSlider.oninput = (e) => { 
+    speedSlider.oninput = (e) => {
         speed = parseInt(e.target.value);
         speedValue.innerText = speed;
     };
-    
-    // Подписка на изменение выделения токенов
+
     sdk.selection.onChange(async (selection) => {
         if (selection && selection.length === 1) {
             const tokenId = selection[0];
@@ -59,6 +53,8 @@ async function initSDK() {
         renderWaypointList();
         stopPatrol();
     });
+
+    statusDiv.innerText = 'Готово. Выделите NPC.';
 }
 
 function enableControls(enabled) {
@@ -72,14 +68,14 @@ function enableControls(enabled) {
 
 function startAddingWaypoint() {
     if (!selectedTokenId) return;
-    statusDiv.innerText = 'Кликните на карте, чтобы добавить точку маршрута';
-    
+    statusDiv.innerText = 'Кликните на карте, чтобы добавить точку';
+
     const unsubscribe = sdk.scene.onClick(async (event) => {
         const point = event.point;
         if (point) {
             waypoints.push({ x: point.x, y: point.y });
             renderWaypointList();
-            statusDiv.innerText = `Точка ${waypoints.length} добавлена. Кликните снова или нажмите "Очистить"`;
+            statusDiv.innerText = `Точка ${waypoints.length} добавлена`;
             await saveWaypointsForToken(selectedTokenId);
         }
         unsubscribe();
@@ -95,7 +91,7 @@ async function clearWaypoints() {
     renderWaypointList();
     stopPatrol();
     if (selectedTokenId) await saveWaypointsForToken(selectedTokenId);
-    statusDiv.innerText = 'Точки маршрута очищены';
+    statusDiv.innerText = 'Точки очищены';
     startPatrolBtn.disabled = true;
 }
 
@@ -148,7 +144,7 @@ async function moveTokenToWaypoint(index) {
             return true;
         }
     } catch (err) {
-        console.error('Ошибка перемещения:', err);
+        console.error(err);
         statusDiv.innerText = 'Ошибка! Патруль остановлен.';
         stopPatrol();
         return false;
@@ -161,7 +157,6 @@ async function patrolStep() {
         stopPatrol();
         return;
     }
-    
     let nextIndex;
     if (mode === 'loop') {
         nextIndex = (currentWaypointIndex + 1) % waypoints.length;
@@ -175,32 +170,26 @@ async function patrolStep() {
             direction = 1;
         }
     }
-    
     const currentPos = waypoints[currentWaypointIndex];
     const nextPos = waypoints[nextIndex];
     const delayMs = calculateDelay(currentPos, nextPos);
-    
     const success = await moveTokenToWaypoint(nextIndex);
     if (!success) return;
-    
     currentWaypointIndex = nextIndex;
     patrolTimeout = setTimeout(patrolStep, delayMs);
 }
 
 function startPatrol() {
     if (!selectedTokenId || waypoints.length < 2) {
-        statusDiv.innerText = 'Нужно минимум 2 точки маршрута';
+        statusDiv.innerText = 'Нужно минимум 2 точки';
         return;
     }
     if (patrolTimeout) stopPatrol();
-    
     currentWaypointIndex = 0;
     direction = 1;
-    
     moveTokenToWaypoint(0).then(success => {
         if (!success) return;
-        const firstDelay = 100;
-        patrolTimeout = setTimeout(patrolStep, firstDelay);
+        patrolTimeout = setTimeout(patrolStep, 100);
         stopPatrolBtn.disabled = false;
         startPatrolBtn.disabled = true;
         statusDiv.innerText = '🚶 Патрулирование запущено...';
@@ -219,7 +208,7 @@ function stopPatrol() {
 }
 
 async function saveWaypointsForToken(tokenId) {
-    if (!sdkReady) return;
+    if (!sdk) return;
     const patrolData = { waypoints, mode, speed };
     try {
         const items = await sdk.room.getItems();
@@ -230,11 +219,11 @@ async function saveWaypointsForToken(tokenId) {
                 metadata: { ...token.metadata, patrolData }
             }]);
         }
-    } catch (e) { console.warn('Не удалось сохранить данные патруля', e); }
+    } catch (e) { console.warn(e); }
 }
 
 async function loadWaypointsForToken(tokenId) {
-    if (!sdkReady) return;
+    if (!sdk) return;
     try {
         const items = await sdk.room.getItems();
         const token = items.find(item => item.id === tokenId);
@@ -254,7 +243,29 @@ async function loadWaypointsForToken(tokenId) {
             renderWaypointList();
             startPatrolBtn.disabled = true;
         }
-    } catch (e) { console.warn('Не удалось загрузить данные', e); }
+    } catch (e) { console.warn(e); }
 }
 
-initSDK();
+// --- Запуск: ждём появления OBR, затем через onReady ---
+function waitAndStart() {
+    if (typeof OBR !== 'undefined') {
+        console.log("OBR уже есть, вызываем startExtension через onReady");
+        OBR.onReady(startExtension);
+    } else {
+        console.log("OBR ещё нет, ждём...");
+        const interval = setInterval(() => {
+            if (typeof OBR !== 'undefined') {
+                clearInterval(interval);
+                console.log("OBR появился, вызываем startExtension через onReady");
+                OBR.onReady(startExtension);
+            }
+        }, 100);
+    }
+}
+
+// Стартуем после полной загрузки DOM
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', waitAndStart);
+} else {
+    waitAndStart();
+}

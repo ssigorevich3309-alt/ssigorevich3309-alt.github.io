@@ -1,13 +1,13 @@
 {
   "name": "NPC Patrol",
-  "version": "2.0.0",
+  "version": "2.1.3",
   "manifest_version": 1,
   "author": "YourName",
   "description": "Циклическое перемещение NPC по заданным точкам маршрута с настраиваемой скоростью.",
   "action": {
     "title": "NPC Patrol",
-    "icon": "/icon.svg",
-    "popover": "/main.html",
+    "icon": "/npc-patrol/icon.svg",
+    "popover": "/npc-patrol/main.html",
     "height": 420,
     "width": 450
   },
